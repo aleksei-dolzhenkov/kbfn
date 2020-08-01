@@ -24,8 +24,6 @@ class State:
     is_fn_used: bool = False
     fn_activate_time: float
 
-    last_suppressed_event: InputEvent = None
-
     pressed_keys = set()
     release_key_codes = {}
 
@@ -43,8 +41,6 @@ class State:
             self.pressed_keys.add(event.code)
         elif event.value == KeyEvent.key_up and event.code in self.pressed_keys:
             self.pressed_keys.remove(event.code)
-
-        _logger.info(self.pressed_keys)
 
 
 state = State()
@@ -159,9 +155,6 @@ def _handle_events(ui: UInput, events: Generator[InputEvent, None, None]):
         else:
             _write_event(ui, event)
 
-
-
-    print(state.release_key_codes)
     ui.syn()
 
 
@@ -189,7 +182,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG,
                         format='%(levelname)s %(asctime)s %(name)s %(message)s')
 
-    _logger.info('Start')
+    _logger.info('Starting')
 
     loop = asyncio.get_event_loop()
     loop.add_signal_handler(signal.SIGINT, _raise_shutdown)
