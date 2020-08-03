@@ -8,7 +8,8 @@ from asyncio import Future
 from evdev import InputDevice, InputEvent, KeyEvent, UInput, ecodes
 
 
-THRESHOLD = 0.5
+MOD_THRESHOLD = 0.5
+FIRST_KEY_DELAY = 0.05
 
 _logger = logging.getLogger(__name__)
 
@@ -27,11 +28,16 @@ class State:
     pressed_keys = set()
     release_key_codes = {}
 
+    first_fn_event: InputEvent = None
+    first_fn_event_passed: bool = False
+
     def activate_fn_layer(self, event: InputEvent):
         self.is_fn_active = True
 
         self.is_fn_used = False
         self.fn_activate_time = event.timestamp()
+        self.first_fn_event = None
+        self.first_fn_event_passed: bool = False
 
     def deactivate_fn_layer(self):
         self.is_fn_active = False
@@ -101,6 +107,18 @@ def _write_event(ui: UInput, event: InputEvent):
     ui.write_event(event)
 
 
+async def _first_fn_key_press(ui: UInput):
+    await asyncio.sleep(FIRST_KEY_DELAY)
+
+    _logger.debug('CALLBACK')
+    if not state.is_fn_active:
+        return
+
+    if not state.first_fn_event_passed:
+        state.first_fn_event_passed = True
+        _handle_fn_event(ui, state.first_fn_event)
+
+
 def _handle_fn_event(ui: UInput, event: InputEvent):
     if event.type == ecodes.EV_KEY:
         key_code = event.code
@@ -110,6 +128,15 @@ def _handle_fn_event(ui: UInput, event: InputEvent):
 
         # pass the event unmodified if the key was pressed before FN layer activated
         if key_code not in state.pressed_keys:
+            if not state.first_fn_event:
+                state.first_fn_event = event
+                asyncio.create_task(_first_fn_key_press(ui))
+                return
+
+            if not state.first_fn_event_passed:
+                state.first_fn_event_passed = True
+                _handle_fn_event(ui, state.first_fn_event)
+
             if key_code not in _keycodes:
                 return
 
@@ -143,18 +170,27 @@ def _handle_events(ui: UInput, events: Generator[InputEvent, None, None]):
 
             elif event.value == KeyEvent.key_up:
                 state.deactivate_fn_layer()
-                if not state.is_fn_used and event.timestamp() - state.fn_activate_time < THRESHOLD:
+                if not state.is_fn_used and event.timestamp() - state.fn_activate_time < MOD_THRESHOLD:
                     _write_space(ui, event)
+
+                    if state.first_fn_event and not state.first_fn_event_passed:
+                        if (event.timestamp() - state.first_fn_event.timestamp()) < FIRST_KEY_DELAY:
+                            _write_event(ui, state.first_fn_event)
 
         elif event.type == ecodes.EV_KEY and state.is_fn_active:
             _handle_fn_event(ui, event)
         elif event.type == ecodes.EV_KEY and event.value in (KeyEvent.key_up, KeyEvent.key_hold):
             # modify `event.code` if fn-layer key was released after FN layer deactivated
             event.code = state.release_key_codes.pop(event.code, event.code)
+
+            if event.code not in state.pressed_keys:
+                continue
+
             _write_event(ui, event)
         else:
             _write_event(ui, event)
 
+    _logger.debug(state.pressed_keys)
     ui.syn()
 
 
