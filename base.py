@@ -42,8 +42,12 @@ class AbstractLayer:
 
 class ModLayer(AbstractLayer):
 
-    def __init__(self, out: AbstractLayer):
+    def configure(self, **kwargs):
+        ...
+
+    def __init__(self, out: AbstractLayer, **kwargs):
         self.out = out
+        self.configure(**kwargs)
 
 
 class EventWriter(AbstractLayer):
