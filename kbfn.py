@@ -18,11 +18,13 @@ TLayers = Dict[int, AbstractLayer]
 logger = logging.getLogger('kbfn')
 
 
-def _get_device_by_name(name: str) -> Optional[InputDevice]:
+def _get_device_by_name(name: str, phys: Optional[str] = None) -> Optional[InputDevice]:
     for x in evdev.list_devices():
         dev = InputDevice(x)
-        logger.debug('%s -> %s', dev.name, x)
-        if dev.name == name:
+
+        logger.debug('%s (%s) -> %s', dev.name, dev.phys, x)
+
+        if dev.name == name or phys and dev.phys == phys:
             return dev
 
 
@@ -65,7 +67,6 @@ def watcher(config):
     _finished = False
 
     while not _finished:
-        print('111')
         try:
             runner(config)
             _finished = True
@@ -102,7 +103,7 @@ class Watcher:
 
 def runner(config):
     dev_name = config['device']
-    dev = _get_device_by_name(dev_name)
+    dev = _get_device_by_name(dev_name, config.get('phys'))
     if not dev:
         raise NoDeviceFound('No device found %s' % dev_name)
 
